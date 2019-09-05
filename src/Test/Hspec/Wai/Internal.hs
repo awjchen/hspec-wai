@@ -9,6 +9,7 @@ module Test.Hspec.Wai.Internal (
 , runWaiSession
 , withApplication
 , getApp
+, getState
 , formatHeader
 ) where
 
@@ -16,6 +17,7 @@ import           Prelude ()
 import           Prelude.Compat
 
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Reader
 import           Network.Wai (Application)
 import           Network.Wai.Test hiding (request)
@@ -29,26 +31,29 @@ import           Control.Monad.Fail
 -- | An expectation in the `WaiSession` monad.  Failing expectations are
 -- communicated through exceptions (similar to `Test.Hspec.Expectations.Expectation` and
 -- `Test.HUnit.Base.Assertion`).
-type WaiExpectation = WaiSession ()
+type WaiExpectation st = WaiSession st ()
 
 -- | A <http://www.yesodweb.com/book/web-application-interface WAI> test
 -- session that carries the `Application` under test and some client state.
-newtype WaiSession a = WaiSession {unWaiSession :: Session a}
+newtype WaiSession st a = WaiSession {unWaiSession :: ReaderT st Session a}
   deriving (Functor, Applicative, Monad, MonadIO
 #if MIN_VERSION_base(4,9,0)
   , MonadFail
 #endif
   )
 
-runWaiSession :: WaiSession a -> Application -> IO a
-runWaiSession = runSession . unWaiSession
+runWaiSession :: WaiSession st a -> Application -> IO a
+runWaiSession = runSession . flip runReaderT undefined . unWaiSession
 
-withApplication :: Application -> WaiSession a -> IO a
+withApplication :: Application -> WaiSession st a -> IO a
 withApplication = flip runWaiSession
 
-instance Example WaiExpectation where
-  type Arg WaiExpectation = Application
-  evaluateExample e p action = evaluateExample (action $ runWaiSession e) p ($ ())
+instance Example (WaiExpectation st) where
+  type Arg (WaiExpectation st) = (st, Application)
+  evaluateExample e p action = evaluateExample (action $ \ app -> runWaiSession e (snd app :: Application)) p ($ ())
 
-getApp :: WaiSession Application
-getApp = WaiSession ask
+getApp :: WaiSession st Application
+getApp = WaiSession (lift ask)
+
+getState :: WaiSession st st
+getState = WaiSession ask

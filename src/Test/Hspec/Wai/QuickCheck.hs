@@ -30,7 +30,7 @@ class Testable a where
 instance Testable WaiProperty where
   toProperty = id
 
-instance Testable WaiExpectation where
+instance Testable (WaiExpectation st) where
   toProperty action = WaiProperty (QuickCheck.property . runWaiSession action)
 
 instance (Arbitrary a, Show a, Testable prop) => Testable (a -> prop) where
