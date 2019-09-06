@@ -11,6 +11,8 @@ module Test.Hspec.Wai.Internal (
 , getApp
 , getState
 , formatHeader
+
+, foo -- FIXME
 ) where
 
 import           Prelude ()
@@ -42,15 +44,18 @@ newtype WaiSession st a = WaiSession {unWaiSession :: ReaderT st Session a}
 #endif
   )
 
-runWaiSession :: WaiSession st a -> Application -> IO a
-runWaiSession = runSession . flip runReaderT undefined . unWaiSession
+runWaiSession :: WaiSession () a -> Application -> IO a
+runWaiSession action app = foo action ((), app)
 
-withApplication :: Application -> WaiSession st a -> IO a
+withApplication :: Application -> WaiSession () a -> IO a
 withApplication = flip runWaiSession
+
+foo :: WaiSession st a -> (st, Application) -> IO a
+foo action (st, app) = runSession (flip runReaderT st $ unWaiSession action) app
 
 instance Example (WaiExpectation st) where
   type Arg (WaiExpectation st) = (st, Application)
-  evaluateExample e p action = evaluateExample (action $ \ app -> runWaiSession e (snd app :: Application)) p ($ ())
+  evaluateExample e p action = evaluateExample (action $ foo e) p ($ ())
 
 getApp :: WaiSession st Application
 getApp = WaiSession (lift ask)

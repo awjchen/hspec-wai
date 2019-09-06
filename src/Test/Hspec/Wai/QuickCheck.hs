@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 module Test.Hspec.Wai.QuickCheck (
   property
 , (==>)
@@ -19,26 +20,30 @@ import           Network.Wai (Application)
 
 import           Test.Hspec.Wai.Internal
 
-property :: Testable a => a -> Application -> Property
+property :: Testable a => a -> (State a, Application) -> Property
 property = unWaiProperty . toProperty
 
-data WaiProperty = WaiProperty {unWaiProperty :: Application -> Property}
+data WaiProperty st = WaiProperty {unWaiProperty :: (st, Application) -> Property}
 
 class Testable a where
-  toProperty :: a -> WaiProperty
+  type State a
+  toProperty :: a -> WaiProperty (State a)
 
-instance Testable WaiProperty where
+instance Testable (WaiProperty st) where
+  type State (WaiProperty st) = st
   toProperty = id
 
 instance Testable (WaiExpectation st) where
-  toProperty action = WaiProperty (QuickCheck.property . runWaiSession action)
+  type State (WaiExpectation st) = st
+  toProperty action = WaiProperty (QuickCheck.property . foo action)
 
 instance (Arbitrary a, Show a, Testable prop) => Testable (a -> prop) where
+  type State (a -> prop) = State prop
   toProperty prop = WaiProperty $ QuickCheck.property . (flip $ unWaiProperty . toProperty . prop)
 
 infixr 0 ==>
-(==>) :: Testable prop => Bool -> prop -> WaiProperty
+(==>) :: Testable prop => Bool -> prop -> WaiProperty (State prop)
 (==>) = lift (QuickCheck.==>)
 
-lift :: Testable prop => (a -> Property -> Property) -> a -> prop -> WaiProperty
+lift :: Testable prop => (a -> Property -> Property) -> a -> prop -> WaiProperty (State prop)
 lift f a prop = WaiProperty $ \app -> f a (unWaiProperty (toProperty prop) app)
